@@ -2,7 +2,7 @@
  
 /*!
  * pixi-viewport - v4.34.1
- * Compiled Fri, 05 Nov 2021 19:49:11 UTC
+ * Compiled Sat, 20 Nov 2021 11:21:21 UTC
  *
  * pixi-viewport is licensed under the MIT License.
  * http://www.opensource.org/licenses/mit-license
@@ -3465,282 +3465,265 @@ class Wheel extends Plugin
  * @ignore
  * @private
  */
-class InputManager
-{
-    
+class InputManager {
+  
 
-    
-    
-    
-    
-    /** List of active touches on viewport */
-    
+  
+  
+  
+  
+  /** List of active touches on viewport */
+  
 
-    constructor(viewport)
-    {
-        this.viewport = viewport;
-        this.touches = [];
+  constructor(viewport) {
+    this.viewport = viewport;
+    this.touches = [];
 
-        this.addListeners();
+    this.addListeners();
+  }
+
+  /** Add input listeners */
+   addListeners() {
+    this.viewport.interactive = true;
+    if (!this.viewport.forceHitArea) {
+      this.viewport.hitArea = new Rectangle(
+        0,
+        0,
+        this.viewport.worldWidth,
+        this.viewport.worldHeight
+      );
+    }
+    this.viewport.on("pointerdown", this.down, this);
+    this.viewport.on("pointermove", this.move, this);
+    this.viewport.on("pointerup", this.up, this);
+    this.viewport.on("pointerupoutside", this.up, this);
+    this.viewport.on("pointercancel", this.up, this);
+    this.viewport.on("pointerout", this.up, this);
+    this.wheelFunction = (e) => this.handleWheel(e);
+    this.viewport.options.divWheel.addEventListener(
+      "wheel",
+      this.wheelFunction ,
+      { passive: this.viewport.options.passiveWheel }
+    );
+    this.isMouseDown = false;
+  }
+
+  /**
+   * Removes all event listeners from viewport
+   * (useful for cleanup of wheel when removing viewport)
+   */
+   destroy() {
+    this.viewport.options.divWheel.removeEventListener(
+      "wheel",
+      this.wheelFunction 
+    );
+  }
+
+  /**
+   * handle down events for viewport
+   *
+   * @param {PIXI.InteractionEvent} event
+   */
+   down(event) {
+    if (this.viewport.pause || !this.viewport.worldVisible) {
+      return;
+    }
+    if (event.data.pointerType === "mouse") {
+      this.isMouseDown = true;
+    } else if (!this.get(event.data.pointerId)) {
+      this.touches.push({ id: event.data.pointerId, last: null });
+    }
+    if (this.count() === 1) {
+      this.last = event.data.global.clone();
+
+      // clicked event does not fire if viewport is decelerating or bouncing
+      const decelerate = this.viewport.plugins.get("decelerate", true);
+      const bounce = this.viewport.plugins.get("bounce", true);
+
+      if (
+        (!decelerate || !decelerate.isActive()) &&
+        (!bounce || !bounce.isActive())
+      ) {
+        this.clickedAvailable = true;
+      } else {
+        this.clickedAvailable = false;
+      }
+    } else {
+      this.clickedAvailable = false;
     }
 
-    /** Add input listeners */
-     addListeners()
-    {
-        this.viewport.interactive = true;
-        if (!this.viewport.forceHitArea)
-        {
-            this.viewport.hitArea = new Rectangle(0, 0, this.viewport.worldWidth, this.viewport.worldHeight);
-        }
-        this.viewport.on('pointerdown', this.down, this);
-        this.viewport.on('pointermove', this.move, this);
-        this.viewport.on('pointerup', this.up, this);
-        this.viewport.on('pointerupoutside', this.up, this);
-        this.viewport.on('pointercancel', this.up, this);
-        this.viewport.on('pointerout', this.up, this);
-        this.wheelFunction = (e) => this.handleWheel(e);
-        this.viewport.options.divWheel.addEventListener(
-            'wheel',
-            this.wheelFunction ,
-            { passive: this.viewport.options.passiveWheel });
-        this.isMouseDown = false;
+    const stop = this.viewport.plugins.down(event);
+
+    if (stop && this.viewport.options.stopPropagation) {
+      event.stopPropagation();
+    }
+  }
+
+  /** Clears all pointer events */
+   clear() {
+    this.isMouseDown = false;
+    this.touches = [];
+    this.last = null;
+  }
+
+  /**
+   * @param {number} change
+   * @returns whether change exceeds threshold
+   */
+   checkThreshold(change) {
+    if (Math.abs(change) >= this.viewport.threshold) {
+      return true;
     }
 
-    /**
-     * Removes all event listeners from viewport
-     * (useful for cleanup of wheel when removing viewport)
-     */
-     destroy()
-    {
-        this.viewport.options.divWheel.removeEventListener('wheel', this.wheelFunction );
+    return false;
+  }
+
+  /** Handle move events for viewport */
+   move(event) {
+    // console.log("%%% ===>>> move", event);
+
+    const { data } = event;
+    const { originalEvent } = data;
+
+    const { ctrlKey } = originalEvent;
+    if (!ctrlKey) return;
+    if (this.viewport.pause || !this.viewport.worldVisible) {
+      return;
     }
 
-    /**
-     * handle down events for viewport
-     *
-     * @param {PIXI.InteractionEvent} event
-     */
-     down(event)
-    {
-        if (this.viewport.pause || !this.viewport.worldVisible)
-        {
-            return;
-        }
-        if (event.data.pointerType === 'mouse')
-        {
-            this.isMouseDown = true;
-        }
-        else if (!this.get(event.data.pointerId))
-        {
-            this.touches.push({ id: event.data.pointerId, last: null });
-        }
-        if (this.count() === 1)
-        {
-            this.last = event.data.global.clone();
+    const stop = this.viewport.plugins.move(event);
 
-            // clicked event does not fire if viewport is decelerating or bouncing
-            const decelerate = this.viewport.plugins.get('decelerate', true);
-            const bounce = this.viewport.plugins.get('bounce', true);
+    if (this.clickedAvailable && this.last) {
+      const distX = event.data.global.x - this.last.x;
+      const distY = event.data.global.y - this.last.y;
 
-            if ((!decelerate || !decelerate.isActive()) && (!bounce || !bounce.isActive()))
-            {
-                this.clickedAvailable = true;
-            }
-            else
-            {
-                this.clickedAvailable = false;
-            }
-        }
-        else
-        {
-            this.clickedAvailable = false;
-        }
-
-        const stop = this.viewport.plugins.down(event);
-
-        if (stop && this.viewport.options.stopPropagation)
-        {
-            event.stopPropagation();
-        }
+      if (this.checkThreshold(distX) || this.checkThreshold(distY)) {
+        this.clickedAvailable = false;
+      }
     }
 
-    /** Clears all pointer events */
-     clear()
-    {
-        this.isMouseDown = false;
-        this.touches = [];
-        this.last = null;
+    if (stop && this.viewport.options.stopPropagation) {
+      event.stopPropagation();
+    }
+  }
+
+  /** Handle up events for viewport */
+   up(event) {
+    if (this.viewport.pause || !this.viewport.worldVisible) {
+      return;
     }
 
-    /**
-     * @param {number} change
-     * @returns whether change exceeds threshold
-     */
-     checkThreshold(change)
-    {
-        if (Math.abs(change) >= this.viewport.threshold)
-        {
-            return true;
-        }
-
-        return false;
+    if (event.data.pointerType === "mouse") {
+      this.isMouseDown = false;
     }
 
-    /** Handle move events for viewport */
-     move(event)
-    {
-        if (this.viewport.pause || !this.viewport.worldVisible)
-        {
-            return;
-        }
-
-        const stop = this.viewport.plugins.move(event);
-
-        if (this.clickedAvailable && this.last)
-        {
-            const distX = event.data.global.x - this.last.x;
-            const distY = event.data.global.y - this.last.y;
-
-            if (this.checkThreshold(distX) || this.checkThreshold(distY))
-            {
-                this.clickedAvailable = false;
-            }
-        }
-
-        if (stop && this.viewport.options.stopPropagation)
-        {
-            event.stopPropagation();
-        }
+    if (event.data.pointerType !== "mouse") {
+      this.remove(event.data.pointerId);
     }
 
-    /** Handle up events for viewport */
-     up(event)
-    {
-        if (this.viewport.pause || !this.viewport.worldVisible)
-        {
-            return;
-        }
+    const stop = this.viewport.plugins.up(event);
 
-        if (event.data.pointerType === 'mouse')
-        {
-            this.isMouseDown = false;
-        }
-
-        if (event.data.pointerType !== 'mouse')
-        {
-            this.remove(event.data.pointerId);
-        }
-
-        const stop = this.viewport.plugins.up(event);
-
-        if (this.clickedAvailable && this.count() === 0 && this.last)
-        {
-            this.viewport.emit('clicked', {
-                event,
-                screen: this.last,
-                world: this.viewport.toWorld(this.last),
-                viewport: this
-            });
-            this.clickedAvailable = false;
-        }
-
-        if (stop && this.viewport.options.stopPropagation)
-        {
-            event.stopPropagation();
-        }
+    if (this.clickedAvailable && this.count() === 0 && this.last) {
+      this.viewport.emit("clicked", {
+        event,
+        screen: this.last,
+        world: this.viewport.toWorld(this.last),
+        viewport: this,
+      });
+      this.clickedAvailable = false;
     }
 
-    /** Gets pointer position if this.interaction is set */
-     getPointerPosition(event)
-    {
-        const point = new Point();
+    if (stop && this.viewport.options.stopPropagation) {
+      event.stopPropagation();
+    }
+  }
 
-        if (this.viewport.options.interaction)
-        {
-            this.viewport.options.interaction.mapPositionToPoint(point, event.clientX, event.clientY);
-        }
-        else
-        {
-            point.x = event.clientX;
-            point.y = event.clientY;
-        }
+  /** Gets pointer position if this.interaction is set */
+   getPointerPosition(event) {
+    const point = new Point();
 
-        return point;
+    if (this.viewport.options.interaction) {
+      this.viewport.options.interaction.mapPositionToPoint(
+        point,
+        event.clientX,
+        event.clientY
+      );
+    } else {
+      point.x = event.clientX;
+      point.y = event.clientY;
     }
 
-    /** Handle wheel events */
-     handleWheel(event)
-    {
-        if (this.viewport.pause || !this.viewport.worldVisible)
-        {
-            return;
-        }
+    return point;
+  }
 
-        // do not handle events coming from other elements
-        if (this.viewport.options.interaction
-            && (this.viewport.options.interaction ).interactionDOMElement !== event.target)
-        {
-            return;
-        }
+  /** Handle wheel events */
+   handleWheel(event) {
+    const { altKey } = event;
+    if (!altKey) return;
 
-        // only handle wheel events where the mouse is over the viewport
-        const point = this.viewport.toLocal(this.getPointerPosition(event));
-
-        if (this.viewport.left <= point.x
-            && point.x <= this.viewport.right
-            && this.viewport.top <= point.y
-            && point.y <= this.viewport.bottom)
-        {
-            const stop = this.viewport.plugins.wheel(event);
-
-            if (stop && !this.viewport.options.passiveWheel)
-            {
-                event.preventDefault();
-            }
-        }
+    if (this.viewport.pause || !this.viewport.worldVisible) {
+      return;
     }
 
-     pause()
-    {
-        this.touches = [];
-        this.isMouseDown = false;
+    // do not handle events coming from other elements
+    if (
+      this.viewport.options.interaction &&
+      (this.viewport.options.interaction ).interactionDOMElement !==
+        event.target
+    ) {
+      return;
     }
 
-    /** Get touch by id */
-     get(id)
-    {
-        for (const touch of this.touches)
-        {
-            if (touch.id === id)
-            {
-                return touch;
-            }
-        }
+    // only handle wheel events where the mouse is over the viewport
+    const point = this.viewport.toLocal(this.getPointerPosition(event));
 
-        return null;
+    if (
+      this.viewport.left <= point.x &&
+      point.x <= this.viewport.right &&
+      this.viewport.top <= point.y &&
+      point.y <= this.viewport.bottom
+    ) {
+      const stop = this.viewport.plugins.wheel(event);
+
+      if (stop && !this.viewport.options.passiveWheel) {
+        event.preventDefault();
+      }
+    }
+  }
+
+   pause() {
+    this.touches = [];
+    this.isMouseDown = false;
+  }
+
+  /** Get touch by id */
+   get(id) {
+    for (const touch of this.touches) {
+      if (touch.id === id) {
+        return touch;
+      }
     }
 
-    /** Remove touch by number */
-    remove(id)
-    {
-        for (let i = 0; i < this.touches.length; i++)
-        {
-            if (this.touches[i].id === id)
-            {
-                this.touches.splice(i, 1);
+    return null;
+  }
 
-                return;
-            }
-        }
-    }
+  /** Remove touch by number */
+  remove(id) {
+    for (let i = 0; i < this.touches.length; i++) {
+      if (this.touches[i].id === id) {
+        this.touches.splice(i, 1);
 
-    /**
-     * @returns {number} count of mouse/touch pointers that are down on the viewport
-     */
-    count()
-    {
-        return (this.isMouseDown ? 1 : 0) + this.touches.length;
+        return;
+      }
     }
+  }
+
+  /**
+   * @returns {number} count of mouse/touch pointers that are down on the viewport
+   */
+  count() {
+    return (this.isMouseDown ? 1 : 0) + this.touches.length;
+  }
 }
 
 function _optionalChain(ops) { let lastAccessLHS = undefined; let value = ops[0]; let i = 1; while (i < ops.length) { const op = ops[i]; const fn = ops[i + 1]; i += 2; if ((op === 'optionalAccess' || op === 'optionalCall') && value == null) { return undefined; } if (op === 'access' || op === 'optionalAccess') { lastAccessLHS = value; value = fn(value); } else if (op === 'call' || op === 'optionalCall') { value = fn((...args) => value.call(lastAccessLHS, ...args)); lastAccessLHS = undefined; } } return value; }
